@@ -1,0 +1,88 @@
+#!/usr/bin/env ruby
+
+require 'net/http'
+require 'json'
+require_relative '../lib/link'
+
+def fetch(url, keys)
+  things = []
+  done = false
+  until done
+    s ||= url[/^[^{]*/]
+    uri = URI(s)
+
+    req = Net::HTTP::Get.new(uri)
+    req['Authorization'] = "Token %s" % ENV.fetch('XCONTRIB_TOKEN')
+
+    res = Net::HTTP.start(uri.hostname, uri.port, :use_ssl => uri.scheme == 'https') {|http|
+        http.request(req)
+    }
+
+    if !res.is_a?(Net::HTTPSuccess)
+      fail res.body
+    end
+
+    data = JSON.parse(res.body)
+    data.each do |datum|
+      thing = {}
+      keys.each do |key|
+        thing[key] = datum[key]
+      end
+      things << thing
+    end
+
+    if res['link'].nil?
+      done = true
+      next
+    end
+
+    links = Link.parse(res['link'])
+
+    if links['last'].nil?
+      done = true
+      next
+    end
+
+    if links['last'].url == s
+      done = true
+      next
+    end
+
+    s = links["next"].url
+  end
+  things
+end
+
+# TODO: exclude specific list of repositories (e.g. go-exercism, todo, just a README)
+
+users = {}
+repositories = fetch('https://api.github.com/orgs/exercism/repos', ["name", "collaborators_url", "contributors_url"])
+repositories.each do |repository|
+  puts "processing %s" % repository["name"]
+
+  collaborators = fetch(repository["collaborators_url"], ["login"]).each_with_object(Hash.new(false)) do |collaborator, members|
+    members[collaborator["login"]] = true
+  end
+
+  fetch(repository["contributors_url"], ["login", "avatar_url", "contributions"]).each do |contributor|
+    username = contributor["login"]
+
+    users[username] ||= {"username" => username, "avatar" => contributor["avatar_url"], "collaborator" => false}
+
+    if collaborators[username]
+      users[username]["collaborator"] = true
+    end
+
+    users[username]["repositories"] ||= []
+    users[username]["repositories"] << {
+      "repository" => repository["name"],
+      "contributions" => contributor["contributions"],
+      "collaborator" => collaborators[username],
+    }
+  end
+  puts "users: %s" % users.size
+end
+
+File.open("contributors.json", 'w') {|f|
+  f.write JSON.pretty_generate(users, "indent" => "  ")
+}

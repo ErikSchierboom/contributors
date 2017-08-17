@@ -18,9 +18,8 @@ def fetch(url, keys)
         http.request(req)
     }
 
-    if !res.is_a?(Net::HTTPSuccess)
-      fail res.body
-    end
+    fail res.body if !res.is_a?(Net::HTTPSuccess)
+    return [] if res.body.nil?
 
     data = JSON.parse(res.body)
     data.each do |datum|

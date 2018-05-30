@@ -12,7 +12,7 @@ def fetch(url, keys)
     uri = URI(s)
 
     req = Net::HTTP::Get.new(uri)
-    req['Authorization'] = "Token %s" % ENV.fetch('XCONTRIB_TOKEN')
+    req['Authorization'] = "Token %s" % ENV.fetch('CURIOSCOPE_TOKEN')
 
     res = Net::HTTP.start(uri.hostname, uri.port, :use_ssl => uri.scheme == 'https') {|http|
         http.request(req)
@@ -22,7 +22,8 @@ def fetch(url, keys)
       fail res.body
     end
 
-    data = JSON.parse(res.body)
+    data = JSON.parse(res.body) if res.body
+    data ||= []
     data.each do |datum|
       thing = {}
       keys.each do |key|
@@ -64,10 +65,10 @@ repositories.each do |repository|
     members[collaborator["login"]] = true
   end
 
-  fetch(repository["contributors_url"], ["login", "avatar_url", "contributions"]).each do |contributor|
+  fetch(repository["contributors_url"], ["login", "id", "avatar_url", "contributions"]).each do |contributor|
     username = contributor["login"]
 
-    users[username] ||= {"username" => username, "avatar" => contributor["avatar_url"], "collaborator" => false}
+    users[username] ||= {"username" => username, "github_id" => contributor["id"], "avatar" => contributor["avatar_url"], "collaborator" => false}
 
     if collaborators[username]
       users[username]["collaborator"] = true
